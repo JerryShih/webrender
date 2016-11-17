@@ -60,6 +60,7 @@ mod geometry;
 mod gpu_store;
 mod internal_types;
 mod layer;
+mod mask_cache;
 mod prim_store;
 mod profiler;
 mod record;
@@ -70,20 +71,29 @@ mod spring;
 mod texture_cache;
 mod tiling;
 mod util;
-pub mod bindings;
+
+mod shader_source {
+    include!(concat!(env!("OUT_DIR"), "/shaders.rs"));
+}
 
 mod platform {
     #[cfg(target_os="macos")]
     pub use platform::macos::font;
-    #[cfg(any(target_os = "android", target_os = "windows", all(unix, not(target_os = "macos"))))]
+    #[cfg(any(target_os = "android", all(unix, not(target_os = "macos"))))]
     pub use platform::unix::font;
+    #[cfg(target_os = "windows")]
+    pub use platform::windows::font;
 
     #[cfg(target_os="macos")]
     pub mod macos {
         pub mod font;
     }
-    #[cfg(any(target_os = "android", target_os = "windows", all(unix, not(target_os = "macos"))))]
+    #[cfg(any(target_os = "android", all(unix, not(target_os = "macos"))))]
     pub mod unix {
+        pub mod font;
+    }
+    #[cfg(target_os = "windows")]
+    pub mod windows {
         pub mod font;
     }
 }
@@ -96,13 +106,15 @@ extern crate core_graphics;
 extern crate core_text;
 #[cfg(target_os="macos")]
 extern crate core_foundation;
-#[cfg(not(target_os="macos"))]
+#[cfg(all(unix, not(target_os="macos")))]
 extern crate freetype;
 
 #[cfg(target_os="windows")]
 extern crate kernel32;
 #[cfg(target_os="windows")]
 extern crate winapi;
+#[cfg(target_os = "windows")]
+extern crate dwrote;
 
 extern crate app_units;
 extern crate bincode;
@@ -118,4 +130,5 @@ extern crate offscreen_gl_context;
 extern crate byteorder;
 extern crate rayon;
 
+pub use renderer::{ExternalImage, ExternalImageSource, ExternalImageHandler};
 pub use renderer::{Renderer, RendererOptions};

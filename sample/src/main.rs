@@ -1,4 +1,3 @@
-extern crate app_units;
 extern crate webrender;
 extern crate glutin;
 extern crate gleam;
@@ -9,9 +8,8 @@ use euclid::{Size2D, Point2D, Rect, Matrix4D};
 use gleam::gl;
 use std::path::PathBuf;
 use std::ffi::CStr;
-use webrender_traits::{PipelineId, StackingContextId, DisplayListId};
-use webrender_traits::{AuxiliaryListsBuilder, Epoch, ColorF, GlyphInstance};
-use webrender_traits::{ImageFormat, RendererKind};
+use webrender_traits::{AuxiliaryListsBuilder, ColorF, Epoch, GlyphInstance};
+use webrender_traits::{ImageData, ImageFormat, PipelineId, RendererKind};
 use std::fs::File;
 use std::io::Read;
 use std::env;
@@ -36,52 +34,8 @@ impl Notifier {
 }
 
 pub struct WebRenderFrameBuilder {
-    pub stacking_contexts: Vec<(StackingContextId, webrender_traits::StackingContext)>,
-    pub display_lists: Vec<(DisplayListId, webrender_traits::BuiltDisplayList)>,
-    pub auxiliary_lists_builder: AuxiliaryListsBuilder,
     pub root_pipeline_id: PipelineId,
     pub next_scroll_layer_id: usize,
-}
-
-impl WebRenderFrameBuilder {
-    pub fn new(root_pipeline_id: PipelineId) -> WebRenderFrameBuilder {
-        WebRenderFrameBuilder {
-            stacking_contexts: vec![],
-            display_lists: vec![],
-            auxiliary_lists_builder: AuxiliaryListsBuilder::new(),
-            root_pipeline_id: root_pipeline_id,
-            next_scroll_layer_id: 0,
-        }
-    }
-
-    pub fn add_stacking_context(&mut self,
-                                api: &mut webrender_traits::RenderApi,
-                                pipeline_id: PipelineId,
-                                stacking_context: webrender_traits::StackingContext)
-                                -> StackingContextId {
-        assert!(pipeline_id == self.root_pipeline_id);
-        let id = api.next_stacking_context_id();
-        self.stacking_contexts.push((id, stacking_context));
-        id
-    }
-
-    pub fn add_display_list(&mut self,
-                            api: &mut webrender_traits::RenderApi,
-                            display_list: webrender_traits::BuiltDisplayList,
-                            stacking_context: &mut webrender_traits::StackingContext)
-                            -> DisplayListId {
-        let id = api.next_display_list_id();
-        stacking_context.display_lists.push(id);
-        self.display_lists.push((id, display_list));
-        id
-    }
-
-    pub fn next_scroll_layer_id(&mut self) -> webrender_traits::ScrollLayerId {
-        let scroll_layer_id = webrender_traits::ServoScrollRootId(self.next_scroll_layer_id);
-        self.next_scroll_layer_id += 1;
-        webrender_traits::ScrollLayerId::new(self.root_pipeline_id, 0, scroll_layer_id)
-    }
-
 }
 
 impl webrender_traits::RenderNotifier for Notifier {
@@ -101,14 +55,14 @@ impl webrender_traits::RenderNotifier for Notifier {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        println!("{} <shader path>", args[0]);
-        return;
-    }
-
-    let res_path = &args[1];
+    let res_path = if args.len() > 1 {
+        Some(PathBuf::from(&args[1]))
+    } else {
+        None
+    };
 
     let window = glutin::WindowBuilder::new()
+                .with_title("WebRender Sample")
                 .with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGl, (3, 2)))
                 .build()
                 .unwrap();
@@ -125,13 +79,13 @@ fn main() {
     };
 
     println!("OpenGL version {}", version);
-    println!("Shader resource path: {}", res_path);
+    println!("Shader resource path: {:?}", res_path);
 
     let (width, height) = window.get_inner_size().unwrap();
 
     let opts = webrender::RendererOptions {
         device_pixel_ratio: 1.0,
-        resource_path: PathBuf::from(res_path),
+        resource_override_path: res_path,
         enable_aa: false,
         enable_msaa: false,
         enable_profiler: false,
@@ -144,7 +98,7 @@ fn main() {
     };
 
     let (mut renderer, sender) = webrender::renderer::Renderer::new(opts);
-    let mut api = sender.create_api();
+    let api = sender.create_api();
 
 //     let font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf";
 //     let font_bytes = load_file(font_path);
@@ -157,11 +111,15 @@ fn main() {
     let epoch = Epoch(0);
     let root_background_color = ColorF::new(0.3, 0.0, 0.0, 1.0);
 
-    let mut frame_builder = WebRenderFrameBuilder::new(pipeline_id);
-    let root_scroll_layer_id = frame_builder.next_scroll_layer_id();
+    let mut auxiliary_lists_builder = AuxiliaryListsBuilder::new();
+    let mut builder = webrender_traits::DisplayListBuilder::new();
+
+    let root_scroll_layer_id =
+        webrender_traits::ScrollLayerId::new(pipeline_id, 0,
+                                             webrender_traits::ServoScrollRootId(0));
 
     let bounds = Rect::new(Point2D::new(0.0, 0.0), Size2D::new(width as f32, height as f32));
-    let mut sc =
+    builder.push_stacking_context(
         webrender_traits::StackingContext::new(Some(root_scroll_layer_id),
                                                webrender_traits::ScrollPolicy::Scrollable,
                                                bounds,
@@ -169,27 +127,25 @@ fn main() {
                                                0,
                                                &Matrix4D::identity(),
                                                &Matrix4D::identity(),
-                                               true,
                                                webrender_traits::MixBlendMode::Normal,
                                                Vec::new(),
-                                               &mut frame_builder.auxiliary_lists_builder);
-
-    let mut builder = webrender_traits::DisplayListBuilder::new();
+                                               &mut auxiliary_lists_builder));
 
     let clip_region = {
-        let rect = Rect::new(Point2D::new(100.0, 100.0), Size2D::new(100.0, 100.0));
         let mask = webrender_traits::ImageMask {
-            image: api.add_image(2, 2, None, ImageFormat::A8, vec![0,80, 180, 255]),
-            rect: rect,
+            image: api.add_image(2, 2, None, ImageFormat::A8, ImageData::Raw(vec![0,80, 180, 255])),
+            rect: Rect::new(Point2D::new(75.0, 75.0), Size2D::new(100.0, 100.0)),
             repeat: false,
         };
         let radius = webrender_traits::BorderRadius::uniform(20.0);
-        let complex = webrender_traits::ComplexClipRegion::new(rect, radius);
+        let complex = webrender_traits::ComplexClipRegion::new(
+            Rect::new(Point2D::new(50.0, 50.0), Size2D::new(100.0, 100.0)),
+            radius);
 
         webrender_traits::ClipRegion::new(&bounds,
                                           vec![complex],
                                           Some(mask),
-                                          &mut frame_builder.auxiliary_lists_builder)
+                                          &mut auxiliary_lists_builder)
     };
 
     builder.push_rect(Rect::new(Point2D::new(100.0, 100.0), Size2D::new(100.0, 100.0)),
@@ -270,19 +226,15 @@ fn main() {
 //                       Au::from_px(0),
 //                       &mut frame_builder.auxiliary_lists_builder);
 
-    frame_builder.add_display_list(&mut api, builder.finalize(), &mut sc);
-    let sc_id = frame_builder.add_stacking_context(&mut api, pipeline_id, sc);
+    builder.pop_stacking_context();
 
-    api.set_root_stacking_context(sc_id,
-                                  root_background_color,
-                                  epoch,
-                                  pipeline_id,
-                                  Size2D::new(width as f32, height as f32),
-                                  frame_builder.stacking_contexts,
-                                  frame_builder.display_lists,
-                                  frame_builder.auxiliary_lists_builder
-                                               .finalize());
-
+    api.set_root_display_list(
+        root_background_color,
+        epoch,
+        pipeline_id,
+        Size2D::new(width as f32, height as f32),
+        builder.finalize(),
+        auxiliary_lists_builder.finalize());
     api.set_root_pipeline(pipeline_id);
 
     for event in window.wait_events() {
