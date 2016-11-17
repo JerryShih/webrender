@@ -266,6 +266,18 @@ impl RenderBackend {
 
                             self.publish_frame_and_notify_compositor(frame, &mut profile_counters);
                         }
+                        ApiMsg::SetScrollOffset(scroll_id, offset) => {
+                            if let Some(ref mut layer) = self.frame.layers.get_mut(&scroll_id) {
+                                layer.scrolling.offset.x = offset.x;
+                                layer.scrolling.offset.y = offset.y;
+                            }
+                        }
+                        ApiMsg::GenerateFrame => {
+                            let frame = profile_counters.total_time.profile(|| {
+                                self.render()
+                            });
+                            self.publish_frame_and_notify_compositor(frame, &mut profile_counters);
+                        }
                         ApiMsg::TranslatePointToLayerSpace(..) => {
                             panic!("unused api - remove from webrender_traits");
                         }
