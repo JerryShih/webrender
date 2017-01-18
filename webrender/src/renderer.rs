@@ -37,7 +37,7 @@ use tiling::{BlurCommand, CacheClipInstance, PrimitiveInstance, RenderTarget};
 use time::precise_time_ns;
 use util::TransformedRectKind;
 use webrender_traits::{ColorF, Epoch, PipelineId, RenderNotifier, RenderDispatcher};
-use webrender_traits::{ExternalImageId, ImageFormat, RenderApiSender, RendererKind};
+use webrender_traits::{ExternalImageId, ImageData, ImageFormat, RenderApiSender, RendererKind};
 use webrender_traits::{DeviceIntRect, DevicePoint, DeviceIntPoint, DeviceIntSize, DeviceUintSize};
 use webrender_traits::channel;
 use webrender_traits::VRCompositorHandler;
@@ -550,7 +550,7 @@ impl Renderer {
                              None,
                              ImageFormat::RGBA8,
                              TextureFilter::Linear,
-                             Arc::new(white_pixels));
+                             ImageData::Raw(Arc::new(white_pixels)));
 
         let dummy_mask_image_id = texture_cache.new_item_id();
         texture_cache.insert(dummy_mask_image_id,
@@ -559,7 +559,7 @@ impl Renderer {
                              None,
                              ImageFormat::A8,
                              TextureFilter::Linear,
-                             Arc::new(mask_pixels));
+                             ImageData::Raw(Arc::new(mask_pixels)));
 
         let debug_renderer = DebugRenderer::new(&mut device);
 
@@ -891,6 +891,9 @@ impl Renderer {
                                                  mode,
                                                  maybe_slice);
                     }
+                    TextureUpdateOp::CreateForExternalBuffer(..) => {
+                        panic!("no impl");
+                    }
                     TextureUpdateOp::Grow(new_width,
                                           new_height,
                                           format,
@@ -911,6 +914,9 @@ impl Renderer {
                                                    y,
                                                    width, height, stride,
                                                    bytes.as_slice());
+                    }
+                    TextureUpdateOp::UpdateForExternalBuffer(..) => {
+                        panic!("no impl");
                     }
                     TextureUpdateOp::Free => {
                         let texture_id = self.cache_texture_id_map[update.id.0];
