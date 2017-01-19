@@ -113,7 +113,8 @@ impl VertexDataTexture {
                             ImageFormat::RGBAF32,
                             TextureFilter::Nearest,
                             RenderTargetMode::None,
-                            Some(unsafe { mem::transmute(data.as_slice()) } ));
+                            Some(unsafe { mem::transmute(data.as_slice()) } ),
+                            None);
     }
 }
 
@@ -872,12 +873,12 @@ impl Renderer {
         for update_list in pending_texture_updates.drain(..) {
             for update in update_list.updates {
                 match update.op {
-                    TextureUpdateOp::Create(width, height, format, filter, mode, maybe_bytes) => {
+                    TextureUpdateOp::Create(width, height, format, filter, mode, maybe_bytes, stride) => {
                         let CacheTextureId(cache_texture_index) = update.id;
                         if self.cache_texture_id_map.len() == cache_texture_index {
                             // Create a new native texture, as requested by the texture cache.
                             let texture_id = self.device
-                                             .create_texture_ids(1, TextureTarget::Default)[0];
+                                                 .create_texture_ids(1, TextureTarget::Default)[0];
                             self.cache_texture_id_map.push(texture_id);
                         }
                         let texture_id = self.cache_texture_id_map[cache_texture_index];
@@ -889,7 +890,8 @@ impl Renderer {
                                                  format,
                                                  filter,
                                                  mode,
-                                                 maybe_slice);
+                                                 maybe_slice,
+                                                 stride);
                     }
                     TextureUpdateOp::CreateForExternalBuffer(..) => {
                         panic!("no impl");
@@ -1359,6 +1361,7 @@ impl Renderer {
                                          ImageFormat::RGBA8,
                                          TextureFilter::Linear,
                                          RenderTargetMode::LayerRenderTarget(pass.targets.len() as i32),
+                                         None,
                                          None);
             }
 

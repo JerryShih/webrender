@@ -342,8 +342,10 @@ pub enum RenderTargetMode {
 }
 
 pub enum TextureUpdateOp {
-    Create(u32, u32, ImageFormat, TextureFilter, RenderTargetMode, Option<Arc<Vec<u8>>>),
-    CreateForExternalBuffer(u32, u32, ImageFormat, TextureFilter, RenderTargetMode, ExternalImageId),
+    // Create(image.width, image.height, format, filter, mode, buffer, stride)
+    Create(u32, u32, ImageFormat, TextureFilter, RenderTargetMode, Option<Arc<Vec<u8>>>, Option<u32>),
+    // Create(image.width, image.height, format, filter, mode, external_image_id, stride)
+    CreateForExternalBuffer(u32, u32, ImageFormat, TextureFilter, RenderTargetMode, ExternalImageId, Option<u32>),
     // Update(tile_pos.x, tile_pos.y, buffer_size.width, buffer_size.height, buffer, stride)
     Update(u32, u32, u32, u32, Arc<Vec<u8>>, Option<u32>),
     // UpdateExternalBuffer(tile_pos.x, tile_pos.y, buffer_size.width, buffer_size.height, has_border, external_image_id, stride)

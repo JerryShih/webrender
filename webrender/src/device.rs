@@ -1068,6 +1068,82 @@ impl Device {
                          pixels);
     }
 
+    fn init_or_update_texture(&mut self,
+                              texture_id: TextureId,
+                              x: u32,
+                              y: u32,
+                              width: u32,
+                              height: u32,
+                              format: ImageFormat,
+                              filter: TextureFilter,
+                              stride: Option<u32>,
+                              data: Option<&[u8]>,
+                              is_init: bool) {
+
+// // init
+
+//                 // self.bind_texture(DEFAULT_TEXTURE, texture_id);
+//                 // self.set_texture_parameters(texture_id.target, filter);
+//                 // self.upload_texture_image(texture_id.target,
+//                 //                           width,
+//                 //                           height,
+//                 //                           internal_format as u32,
+//                 //                           gl_format,
+//                 //                           type_,
+//                 //                           pixels);
+
+
+
+// // update
+
+
+//     //     let mut expanded_data = Vec::new();
+
+//     //     let (gl_format, bpp, data) = match self.textures.get(&texture_id).unwrap().format {
+//     //         ImageFormat::A8 => {
+//     //             if cfg!(any(target_arch="arm", target_arch="aarch64")) {
+//     //                 for byte in data {
+//     //                     expanded_data.push(*byte);
+//     //                     expanded_data.push(*byte);
+//     //                     expanded_data.push(*byte);
+//     //                     expanded_data.push(*byte);
+//     //                 }
+//     //                 (GL_FORMAT_BGRA, 4, expanded_data.as_slice())
+//     //             } else {
+//     //                 (GL_FORMAT_A, 1, data)
+//     //             }
+//     //         }
+//     //         ImageFormat::RGB8 => (gl::RGB, 3, data),
+//     //         ImageFormat::RGBA8 => (GL_FORMAT_BGRA, 4, data),
+//     //         ImageFormat::Invalid | ImageFormat::RGBAF32 => unreachable!(),
+//     //     };
+
+//     //     let row_length = match stride {
+//     //         Some(value) => value / bpp,
+//     //         None => width,
+//     //     };
+
+//     //     assert!(data.len() as u32 == bpp * row_length * height);
+
+//     //     if let Some(..) = stride {
+//     //         gl::pixel_store_i(gl::UNPACK_ROW_LENGTH, row_length as gl::GLint);
+//     //     }
+
+//     //     self.bind_texture(DEFAULT_TEXTURE, texture_id);
+//     //     self.update_image_for_2d_texture(texture_id.target,
+//     //                                      x0 as gl::GLint,
+//     //                                      y0 as gl::GLint,
+//     //                                      width as gl::GLint,
+//     //                                      height as gl::GLint,
+//     //                                      gl_format,
+//     //                                      data);
+
+//     //     // Reset row length to 0, otherwise the stride would apply to all texture uploads.
+//     //     if let Some(..) = stride {
+//     //         gl::pixel_store_i(gl::UNPACK_ROW_LENGTH, 0 as gl::GLint);
+//     //     }
+    }
+
     pub fn init_texture(&mut self,
                         texture_id: TextureId,
                         width: u32,
@@ -1075,7 +1151,8 @@ impl Device {
                         format: ImageFormat,
                         filter: TextureFilter,
                         mode: RenderTargetMode,
-                        pixels: Option<&[u8]>) {
+                        pixels: Option<&[u8]>,
+                        stride: Option<u32>) {
         debug_assert!(self.inside_frame);
 
         {
@@ -1087,11 +1164,11 @@ impl Device {
             texture.mode = mode;
         }
 
-        let (internal_format, gl_format) = gl_texture_formats_for_image_format(format);
-        let type_ = gl_type_for_texture_format(format);
-
         match mode {
             RenderTargetMode::SimpleRenderTarget => {
+                let (internal_format, gl_format) = gl_texture_formats_for_image_format(format);
+                let type_ = gl_type_for_texture_format(format);
+
                 self.bind_texture(DEFAULT_TEXTURE, texture_id);
                 self.set_texture_parameters(texture_id.target, filter);
                 self.upload_texture_image(texture_id.target,
@@ -1109,15 +1186,30 @@ impl Device {
                 self.create_fbo_for_texture_if_necessary(texture_id, Some(layer_count));
             }
             RenderTargetMode::None => {
-                self.bind_texture(DEFAULT_TEXTURE, texture_id);
-                self.set_texture_parameters(texture_id.target, filter);
-                self.upload_texture_image(texture_id.target,
-                                          width,
-                                          height,
-                                          internal_format as u32,
-                                          gl_format,
-                                          type_,
-                                          pixels);
+                self.init_or_update_texture(texture_id,
+                                            0,
+                                            0,
+                                            width,
+                                            height,
+                                            format,
+                                            filter,
+                                            stride,
+                                            pixels,
+                                            true);
+
+
+
+
+
+                // self.bind_texture(DEFAULT_TEXTURE, texture_id);
+                // self.set_texture_parameters(texture_id.target, filter);
+                // self.upload_texture_image(texture_id.target,
+                //                           width,
+                //                           height,
+                //                           internal_format as u32,
+                //                           gl_format,
+                //                           type_,
+                //                           pixels);
             }
         }
     }
@@ -1247,7 +1339,7 @@ impl Device {
         let (old_width, old_height) = self.get_texture_dimensions(texture_id);
 
         let temp_texture_id = self.create_texture_ids(1, TextureTarget::Default)[0];
-        self.init_texture(temp_texture_id, old_width, old_height, format, filter, mode, None);
+        self.init_texture(temp_texture_id, old_width, old_height, format, filter, mode, None, None);
         self.create_fbo_for_texture_if_necessary(temp_texture_id, None);
 
         self.bind_read_target(Some((texture_id, 0)));
@@ -1263,7 +1355,7 @@ impl Device {
                                   old_height as i32);
 
         self.deinit_texture(texture_id);
-        self.init_texture(texture_id, new_width, new_height, format, filter, mode, None);
+        self.init_texture(texture_id, new_width, new_height, format, filter, mode, None, None);
         self.create_fbo_for_texture_if_necessary(texture_id, None);
         self.bind_read_target(Some((temp_texture_id, 0)));
         self.bind_texture(DEFAULT_TEXTURE, texture_id);

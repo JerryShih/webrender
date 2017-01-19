@@ -42,7 +42,8 @@ impl DebugRenderer {
                             ImageFormat::A8,
                             TextureFilter::Linear,
                             RenderTargetMode::None,
-                            Some(&debug_font_data::FONT_BITMAP));
+                            Some(&debug_font_data::FONT_BITMAP),
+                            None);
 
         DebugRenderer {
             font_vertices: Vec::new(),
