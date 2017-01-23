@@ -458,8 +458,9 @@ impl ResourceCache {
         let image_template = &self.image_templates[&image_key];
 
         let external_id = match image_template.data {
-            ImageData::External(id) | ImageData::ExternalBuffer(id) => Some(id),
-            ImageData::Raw(..) => None,
+            ImageData::External(id) => Some(id),
+            // raw and externalBuffer are all use resource_cache.
+            ImageData::Raw(..) | ImageData::ExternalBuffer(..) => None,
         };
 
         ImageProperties {
