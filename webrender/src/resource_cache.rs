@@ -252,7 +252,7 @@ impl ResourceCache {
                               data: ImageData) {
         let is_opaque = match data {
             ImageData::Raw(ref bytes) => is_image_opaque(format, bytes),
-            ImageData::External(..) => false,           // TODO: Allow providing this through API.
+            ImageData::ExternalHandle(..) | ImageData::ExternalBuffer(..) => false, // TODO: Allow providing this through API.
         };
         let resource = ImageResource {
             is_opaque: is_opaque,
@@ -277,7 +277,7 @@ impl ResourceCache {
             Some(image) => {
                 // This image should not be an external image.
                 match image.data {
-                    ImageData::External(id) => {
+                    ImageData::ExternalHandle(id) => {
                         panic!("Update an external image with buffer, id={} image_key={:?}", id.0, image_key);
                     },
                     _ => {},
@@ -310,7 +310,7 @@ impl ResourceCache {
         // If the key is associated to an external image, pass the external id to renderer for cleanup.
         if let Some(image) = value {
             match image.data {
-                ImageData::External(id) => {
+                ImageData::ExternalHandle(id) => {
                     self.pending_external_image_update_list.push(id);
                 },
                 _ => {},
@@ -458,8 +458,9 @@ impl ResourceCache {
         let image_template = &self.image_templates[&image_key];
 
         let external_id = match image_template.data {
-            ImageData::External(id) => Some(id),
-            ImageData::Raw(..) => None,
+            ImageData::ExternalHandle(id) => Some(id),
+            // raw and externalBuffer are all use resource_cache.
+            ImageData::Raw(..) | ImageData::ExternalBuffer(..) => None,
         };
 
         ImageProperties {
@@ -528,7 +529,7 @@ impl ResourceCache {
                                                           None,
                                                           ImageFormat::RGBA8,
                                                           TextureFilter::Linear,
-                                                          Arc::new(glyph.bytes));
+                                                          ImageData::Raw(Arc::new(glyph.bytes)));
                                 Some(image_id)
                             } else {
                                 None
@@ -547,22 +548,24 @@ impl ResourceCache {
         for request in self.pending_image_requests.drain(..) {
             let cached_images = &mut self.cached_images;
             let image_template = &self.image_templates[&request.key];
+            let image_data = image_template.data.clone();
 
             match image_template.data {
-                ImageData::External(..) => {}
-                ImageData::Raw(ref bytes) => {
+                ImageData::ExternalHandle(..) => {
+                    // external handle doesn't need to update the texture_cache.
+                }
+                ImageData::Raw(..) | ImageData::ExternalBuffer(..) => {
                     match cached_images.entry(request.clone(), self.current_frame_id) {
                         Occupied(entry) => {
                             let image_id = entry.get().texture_cache_id;
 
                             if entry.get().epoch != image_template.epoch {
-                                // TODO: Can we avoid the clone of the bytes here?
                                 self.texture_cache.update(image_id,
                                                           image_template.width,
                                                           image_template.height,
                                                           image_template.stride,
                                                           image_template.format,
-                                                          bytes.clone());
+                                                          image_data);
 
                                 // Update the cached epoch
                                 *entry.into_mut() = CachedImageInfo {
@@ -579,14 +582,13 @@ impl ResourceCache {
                                 ImageRendering::Auto | ImageRendering::CrispEdges => TextureFilter::Linear,
                             };
 
-                            // TODO: Can we avoid the clone of the bytes here?
                             self.texture_cache.insert(image_id,
                                                       image_template.width,
                                                       image_template.height,
                                                       image_template.stride,
                                                       image_template.format,
                                                       filter,
-                                                      bytes.clone());
+                                                      image_data);
 
                             entry.insert(CachedImageInfo {
                                 texture_cache_id: image_id,
