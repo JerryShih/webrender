@@ -1959,6 +1959,9 @@ pub struct ExternalImage<'a> {
 /// external image buffers.
 /// When the the application passes an external image to WR, it should kepp that
 /// external image life time untile the release() call.
+/// People could check the epoch id in RenderNotifier at the client side to make sure
+/// that the external image is not used by WR. Then, do the clean up for that external
+/// image.
 pub trait ExternalImageHandler {
     /// Lock the external image. Then, WR could start to read the image content.
     /// The WR client should not change the image content until the unlock()
@@ -1967,8 +1970,6 @@ pub trait ExternalImageHandler {
     /// Unlock the external image. The WR should not read the image content
     /// after this call.
     fn unlock(&mut self, key: ExternalImageId);
-    /// Tell the WR client that it could start to release this external image.
-    fn release(&mut self, key: ExternalImageId);
 }
 
 pub struct RendererOptions {
