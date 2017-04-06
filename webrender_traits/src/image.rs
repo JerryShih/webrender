@@ -108,6 +108,42 @@ impl ImageData {
     }
 }
 
+pub type TileSize = u16;
+
+pub struct ImageChannelData {
+    pub data: ImageData,
+    pub descriptor: ImageDescriptor,
+    pub tiling: Option<TileSize>,
+    pub dirty_rect: Option<DeviceUintRect>,
+}
+
+impl ImageChannelData {
+    pub fn new(data: ImageData,
+               descriptor: ImageDescriptor,
+               tiling: Option<TileSize>,
+               dirty_rect: Option<DeviceUintRect>) -> ImageChannelData {
+        ImageChannelData {
+            data: data,
+            descriptor: descriptor,
+            tiling: tiling,
+            dirty_rect: dirty_rect,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum ImageChannelType {
+    SingleChannel = 1,
+    DoubleChannel = 2,
+    TripleChannel = 3,
+}
+pub const IMAGE_MAX_CHANNEL_SIZE:usize = ImageChannelType::TripleChannel as usize;
+
+pub struct ImageChannel {
+    pub image_channel_type: ImageChannelType,
+    pub channel_data: [Option<ImageChannelData>; IMAGE_MAX_CHANNEL_SIZE],
+}
+
 pub trait BlobImageRenderer: Send {
     fn request_blob_image(&mut self,
                             key: ImageKey,

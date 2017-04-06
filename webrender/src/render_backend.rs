@@ -21,6 +21,7 @@ use webrender_traits::{ApiMsg, AuxiliaryLists, BuiltDisplayList, IdNamespace, Im
 use webrender_traits::{PipelineId, RenderNotifier, RenderDispatcher, WebGLCommand, WebGLContextId};
 use webrender_traits::channel::{PayloadSenderHelperMethods, PayloadReceiverHelperMethods, PayloadReceiver, PayloadSender, MsgReceiver};
 use webrender_traits::{BlobImageRenderer, VRCompositorCommand, VRCompositorHandler};
+use webrender_traits::{ImageChannel, ImageChannelData};
 #[cfg(feature = "webgl")]
 use offscreen_gl_context::GLContextDispatcher;
 #[cfg(not(feature = "webgl"))]
@@ -150,6 +151,93 @@ impl RenderBackend {
                         }
                         ApiMsg::UpdateImage(id, descriptor, bytes, dirty_rect) => {
                             self.resource_cache.update_image_template(id, descriptor, bytes, dirty_rect);
+                        }
+                        ApiMsg::AddYUVImage(id,
+                                            descriptor_channel_0, data_channel_0,
+                                            descriptor_channel_1, data_channel_1,
+                                            descriptor_channel_2, data_channel_2) => {
+                            // if let ImageData::Raw(ref bytes) = data_channel_0 {
+                            //     profile_counters.image_templates.inc(bytes.len());
+                            // }
+                            // if let ImageData::Raw(ref bytes) = data_channel_1 {
+                            //     profile_counters.image_templates.inc(bytes.len());
+                            // }
+                            // if let ImageData::Raw(ref bytes) = data_channel_2 {
+                            //     profile_counters.image_templates.inc(bytes.len());
+                            // }
+
+
+                            // let channel_data = ImageChannel::TripleChannel([
+                            //     ImageChannelData {
+                            //         data: data_channel_0,
+                            //         descriptor: descriptor_channel_0,
+                            //         tiling: tiling_0,
+                            //     },
+                            //     ImageChannelData {
+                            //         data: data_channel_1,
+                            //         descriptor: descriptor_channel_1,
+                            //         tiling: tiling_1,
+                            //     },
+                            //     ImageChannelData {
+                            //         data: data_channel_2,
+                            //         descriptor: descriptor_channel_2,
+                            //         tiling: tiling_2,
+                            //     },
+                            // ]);
+
+                            // self.resource_cache.add_image_template(id, channel_data);
+                        }
+                        // ApiMsg::AddYUVImage(id,
+                        //                     descriptor_channel_0,
+                        //                     data_channel_0,
+                        //                     descriptor_channel_1,
+                        //                     data_channel_1,
+                        //                     descriptor_channel_2,
+                        //                     data_channel_2,
+                        //                     tiling) => {
+                        //     if let ImageData::Raw(ref bytes) = data_channel_0 {
+                        //         profile_counters.image_templates.inc(bytes.len());
+                        //     }
+                        //     if let ImageData::Raw(ref bytes) = data_channel_1 {
+                        //         profile_counters.image_templates.inc(bytes.len());
+                        //     }
+                        //     if let ImageData::Raw(ref bytes) = data_channel_2 {
+                        //         profile_counters.image_templates.inc(bytes.len());
+                        //     }
+                        //     self.resource_cache.add_image_template(id,
+                        //                                            descriptor_channel_0,
+                        //                                            data_channel_0,
+                        //                                            Some(descriptor_channel_1),
+                        //                                            Some(data_channel_1),
+                        //                                            Some(descriptor_channel_2),
+                        //                                            Some(data_channel_2),
+                        //                                            tiling);
+                        // }
+                        ApiMsg::UpdateYUVImage(id,
+                                               descriptor_channel_0, data_channel_0,
+                                               descriptor_channel_1, data_channel_1,
+                                               descriptor_channel_2, data_channel_2) => {
+                            // let channel_data = ImageChannel::TripleChannel([
+                            //     ImageChannelData {
+                            //         data: data_channel_0,
+                            //         descriptor: descriptor_channel_0,
+                            //         tiling: None,
+                            //         dirty_rect: dirty_rect_0,
+                            //     },
+                            //     ImageChannelData {
+                            //         data: data_channel_1,
+                            //         descriptor: descriptor_channel_1,
+                            //         tiling: None,
+                            //         dirty_rect: dirty_rect_1,
+                            //     },
+                            //     ImageChannelData {
+                            //         data: data_channel_2,
+                            //         descriptor: descriptor_channel_2,
+                            //         tiling: None,
+                            //         dirty_rect: dirty_rect_2,
+                            //     },
+                            // ]);
+                            // self.resource_cache.update_image_template(id, channel_data);
                         }
                         ApiMsg::DeleteImage(id) => {
                             self.resource_cache.delete_image_template(id);

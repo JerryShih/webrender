@@ -840,7 +840,7 @@ impl PrimitiveStore {
                                    clip_info: &MaskCacheInfo,
                                    resource_cache: &ResourceCache) {
         if let Some((ref mask, gpu_address)) = clip_info.image {
-            let cache_item = resource_cache.get_cached_image(mask.image, ImageRendering::Auto, None);
+            let cache_item = resource_cache.get_cached_image(mask.image, 0, ImageRendering::Auto, None);
             let mask_data = gpu_data32.get_slice_mut(gpu_address, MASK_DATA_GPU_SIZE);
             mask_data[0] = GpuBlock32::from(ImageMaskData {
                 uv_rect: DeviceRect::new(cache_item.uv0,
@@ -860,10 +860,11 @@ impl PrimitiveStore {
     fn resolve_image(resource_cache: &ResourceCache,
                      deferred_resolves: &mut Vec<DeferredResolve>,
                      image_key: ImageKey,
+                     image_channel: usize,
                      image_uv_address: GpuStoreAddress,
                      image_rendering: ImageRendering,
                      tile_offset: Option<TileOffset>) -> (SourceTexture, Option<CacheItem>) {
-        let image_properties = resource_cache.get_image_properties(image_key);
+        let image_properties = resource_cache.get_image_properties(image_key, image_channel);
 
         // Check if an external image that needs to be resolved
         // by the render thread.
@@ -880,7 +881,10 @@ impl PrimitiveStore {
                 (SourceTexture::External(external_image), None)
             }
             None => {
-                let cache_item = resource_cache.get_cached_image(image_key, image_rendering, tile_offset);
+                let cache_item = resource_cache.get_cached_image(image_key,
+                                                                 image_channel,
+                                                                 image_rendering,
+                                                                 tile_offset);
                 (cache_item.texture_id, Some(cache_item))
             }
         }
@@ -936,6 +940,7 @@ impl PrimitiveStore {
                             PrimitiveStore::resolve_image(resource_cache,
                                                           &mut deferred_resolves,
                                                           image_key,
+                                                          0,
                                                           image_cpu.resource_address,
                                                           image_rendering,
                                                           tile_offset)
@@ -977,6 +982,7 @@ impl PrimitiveStore {
                                 PrimitiveStore::resolve_image(resource_cache,
                                                               &mut deferred_resolves,
                                                               image_cpu.yuv_key[channel],
+                                                              0,
                                                               resource_address,
                                                               ImageRendering::Auto,
                                                               None);
@@ -1068,7 +1074,7 @@ impl PrimitiveStore {
                              auxiliary_lists);
             for clip in &metadata.clips {
                 if let ClipSource::Region(ClipRegion{ image_mask: Some(ref mask), .. }, _) = *clip {
-                    resource_cache.request_image(mask.image, ImageRendering::Auto, None);
+                    resource_cache.request_image(mask.image, 0, ImageRendering::Auto, None);
                     prim_needs_resolve = true;
                 }
             }
@@ -1195,13 +1201,13 @@ impl PrimitiveStore {
                 prim_needs_resolve = true;
                 match image_cpu.kind {
                     ImagePrimitiveKind::Image(image_key, image_rendering, tile_offset, tile_spacing) => {
-                        resource_cache.request_image(image_key, image_rendering, tile_offset);
+                        resource_cache.request_image(image_key, 0, image_rendering, tile_offset);
 
                         // TODO(gw): This doesn't actually need to be calculated each frame.
                         // It's cheap enough that it's not worth introducing a cache for images
                         // right now, but if we introduce a cache for images for some other
                         // reason then we might as well cache this with it.
-                        let image_properties = resource_cache.get_image_properties(image_key);
+                        let image_properties = resource_cache.get_image_properties(image_key, 0);
                         metadata.is_opaque = image_properties.descriptor.is_opaque &&
                                              tile_spacing.width == 0.0 &&
                                              tile_spacing.height == 0.0;
@@ -1214,7 +1220,7 @@ impl PrimitiveStore {
                 prim_needs_resolve = true;
 
                 for channel in 0..3 {
-                    resource_cache.request_image(image_cpu.yuv_key[channel], ImageRendering::Auto, None);
+                    resource_cache.request_image(image_cpu.yuv_key[channel], 0, ImageRendering::Auto, None);
                 }
 
                 // TODO(nical): Currently assuming no tile_spacing for yuv images.

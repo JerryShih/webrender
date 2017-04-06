@@ -27,6 +27,7 @@ use webrender_traits::{DevicePoint, DeviceIntSize, DeviceUintRect, ImageDescript
 use webrender_traits::{GlyphOptions, GlyphInstance, TileOffset, TileSize};
 use webrender_traits::{BlobImageRenderer, BlobImageDescriptor, BlobImageError};
 use webrender_traits::{ExternalImageData, ExternalImageType};
+use webrender_traits::{ImageChannel, ImageChannelData, ImageChannelType};
 use threadpool::ThreadPool;
 use euclid::Point2D;
 
@@ -109,11 +110,8 @@ enum State {
 }
 
 struct ImageResource {
-    data: ImageData,
-    descriptor: ImageDescriptor,
+    image_channel: ImageChannel,
     epoch: Epoch,
-    tiling: Option<TileSize>,
-    dirty_rect: Option<DeviceUintRect>
 }
 
 struct CachedImageInfo {
@@ -185,6 +183,7 @@ impl<K,V> ResourceClassCache<K,V> where K: Clone + Hash + Eq + Debug, V: Resourc
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct ImageRequest {
     key: ImageKey,
+    channel_index: usize,
     rendering: ImageRendering,
     tile: Option<TileOffset>,
 }
@@ -296,11 +295,15 @@ impl ResourceCache {
         }
 
         let resource = ImageResource {
-            descriptor: descriptor,
-            data: data,
+            image_channel: ImageChannel {
+                image_channel_type: ImageChannelType::SingleChannel,
+                channel_data: [
+                    Some(ImageChannelData::new(data, descriptor, tiling, None)),
+                    None,
+                    None,
+                ],
+            },
             epoch: Epoch(0),
-            tiling: tiling,
-            dirty_rect: None,
         };
 
         self.image_templates.insert(image_key, resource);
@@ -312,27 +315,35 @@ impl ResourceCache {
                                  data: ImageData,
                                  dirty_rect: Option<DeviceUintRect>) {
         let resource = if let Some(image) = self.image_templates.get(&image_key) {
-            assert_eq!(image.descriptor.width, descriptor.width);
-            assert_eq!(image.descriptor.height, descriptor.height);
-            assert_eq!(image.descriptor.format, descriptor.format);
+            assert_eq!(image.image_channel.image_channel_type, ImageChannelType::SingleChannel);
+            let channel_data = image.image_channel.channel_data[0].as_ref().unwrap();
+            assert_eq!(channel_data.descriptor.width, descriptor.width);
+            assert_eq!(channel_data.descriptor.height, descriptor.height);
+            assert_eq!(channel_data.descriptor.format, descriptor.format);
 
             let next_epoch = Epoch(image.epoch.0 + 1);
 
-            let mut tiling = image.tiling;
+            let mut tiling = channel_data.tiling;
             if tiling.is_none() && self.should_tile(&descriptor, &data) {
                 tiling = Some(DEFAULT_TILE_SIZE);
             }
 
+            let new_dirty_rect = match (dirty_rect, channel_data.dirty_rect) {
+                (Some(rect), Some(prev_rect)) => Some(rect.union(&prev_rect)),
+                (Some(rect), None) => Some(rect),
+                _ => None,
+            };
+
             ImageResource {
-                descriptor: descriptor,
-                data: data,
-                epoch: next_epoch,
-                tiling: tiling,
-                dirty_rect: match (dirty_rect, image.dirty_rect) {
-                    (Some(rect), Some(prev_rect)) => Some(rect.union(&prev_rect)),
-                    (Some(rect), None) => Some(rect),
-                    _ => None,
+                image_channel: ImageChannel {
+                    image_channel_type: ImageChannelType::SingleChannel,
+                    channel_data: [
+                        Some(ImageChannelData::new(data, descriptor, tiling, new_dirty_rect)),
+                        None,
+                        None,
+                    ],
                 },
+                epoch: next_epoch,
             }
         } else {
             panic!("Attempt to update non-existant image (key {:?}).", image_key);
@@ -366,18 +377,27 @@ impl ResourceCache {
 
     pub fn request_image(&mut self,
                          key: ImageKey,
+                         channel_index: usize,
                          rendering: ImageRendering,
                          tile: Option<TileOffset>) {
-
         debug_assert!(self.state == State::AddResources);
+        let template = self.image_templates.get(&key).unwrap();
+        debug_assert!(channel_index < (template.image_channel.image_channel_type as usize));
+        // We only support tiling for single channel image.
+        debug_assert!(tile.is_none() || (template.image_channel.image_channel_type == ImageChannelType::SingleChannel));
+
         let request = ImageRequest {
             key: key,
+            channel_index: channel_index,
             rendering: rendering,
             tile: tile,
         };
 
-        let template = self.image_templates.get(&key).unwrap();
-        if let ImageData::Blob(ref data) = template.data {
+        let image_channel_data = template.image_channel.channel_data[channel_index].as_ref().unwrap();
+        if let ImageData::Blob(ref data) = image_channel_data.data {
+            // We only support blob image for single channel image.
+            debug_assert!(template.image_channel.image_channel_type == ImageChannelType::SingleChannel);
+
             if let Some(ref mut renderer) = self.blob_image_renderer {
                 let same_epoch = match self.cached_images.resources.get(&request) {
                     Some(entry) => entry.epoch == template.epoch,
@@ -389,13 +409,13 @@ impl ResourceCache {
                         key,
                         Arc::clone(data),
                         &BlobImageDescriptor {
-                            width: template.descriptor.width,
-                            height: template.descriptor.height,
-                            format: template.descriptor.format,
+                            width: image_channel_data.descriptor.width,
+                            height: image_channel_data.descriptor.height,
+                            format: image_channel_data.descriptor.format,
                             // TODO(nical): figure out the scale factor (should change with zoom).
                             scale_factor: 1.0,
                         },
-                        template.dirty_rect,
+                        image_channel_data.dirty_rect,
                     );
                 }
             }
@@ -499,11 +519,13 @@ impl ResourceCache {
     #[inline]
     pub fn get_cached_image(&self,
                             image_key: ImageKey,
+                            channel_index: usize,
                             image_rendering: ImageRendering,
                             tile: Option<TileOffset>) -> CacheItem {
         debug_assert!(self.state == State::QueryResources);
         let key = ImageRequest {
             key: image_key,
+            channel_index: channel_index,
             rendering: image_rendering,
             tile: tile,
         };
@@ -518,10 +540,13 @@ impl ResourceCache {
         }
     }
 
-    pub fn get_image_properties(&self, image_key: ImageKey) -> ImageProperties {
+    pub fn get_image_properties(&self, image_key: ImageKey,
+                                channel_index: usize) -> ImageProperties {
         let image_template = &self.image_templates[&image_key];
+        debug_assert!(channel_index < (image_template.image_channel.image_channel_type as usize));
+        let channel_data = image_template.image_channel.channel_data[channel_index].as_ref().unwrap();
 
-        let external_image = match image_template.data {
+        let external_image = match channel_data.data {
             ImageData::External(ext_image) => {
                 match ext_image.image_type {
                     ExternalImageType::Texture2DHandle |
@@ -537,9 +562,9 @@ impl ResourceCache {
         };
 
         ImageProperties {
-            descriptor: image_template.descriptor,
+            descriptor: channel_data.descriptor,
             external_image: external_image,
-            tiling: image_template.tiling,
+            tiling: channel_data.tiling,
         }
     }
 
@@ -664,13 +689,15 @@ impl ResourceCache {
                             image_data: Option<ImageData>,
                             texture_cache_profile: &mut TextureCacheProfileCounters) {
         let image_template = self.image_templates.get_mut(&request.key).unwrap();
+        let channel_data = image_template.image_channel
+                                         .channel_data[request.channel_index].as_mut().unwrap();
         let image_data = image_data.unwrap_or_else(||{
-            image_template.data.clone()
+            channel_data.data.clone()
         });
 
         let descriptor = if let Some(tile) = request.tile {
-            let tile_size = image_template.tiling.unwrap() as u32;
-            let image_descriptor = &image_template.descriptor;
+            let tile_size = channel_data.tiling.unwrap() as u32;
+            let image_descriptor = &channel_data.descriptor;
             let stride = image_descriptor.compute_stride();
             let bpp = image_descriptor.format.bytes_per_pixel().unwrap();
 
@@ -700,7 +727,7 @@ impl ResourceCache {
                 is_opaque: image_descriptor.is_opaque,
             }
         } else {
-            image_template.descriptor.clone()
+            channel_data.descriptor.clone()
         };
 
         match self.cached_images.entry(request.clone(), self.current_frame_id) {
@@ -711,14 +738,14 @@ impl ResourceCache {
                     self.texture_cache.update(image_id,
                                               descriptor,
                                               image_data,
-                                              image_template.dirty_rect);
+                                              channel_data.dirty_rect);
 
                     // Update the cached epoch
                     *entry.into_mut() = CachedImageInfo {
                         texture_cache_id: image_id,
                         epoch: image_template.epoch,
                     };
-                    image_template.dirty_rect = None;
+                    channel_data.dirty_rect = None;
                 }
             }
             Vacant(entry) => {
@@ -746,7 +773,10 @@ impl ResourceCache {
                               request: ImageRequest,
                               image_data: Option<ImageData>,
                               texture_cache_profile: &mut TextureCacheProfileCounters) {
-        match self.image_templates.get(&request.key).unwrap().data {
+        match self.image_templates.get(&request.key).unwrap()
+                                  .image_channel
+                                  .channel_data[request.channel_index].as_ref().unwrap()
+                                  .data {
             ImageData::External(ext_image) => {
                 match ext_image.image_type {
                     ExternalImageType::Texture2DHandle |

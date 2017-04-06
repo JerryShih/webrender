@@ -68,8 +68,10 @@ pub fn should_record_msg(msg: &ApiMsg) -> bool {
         ApiMsg::AddNativeFont(..) |
         ApiMsg::DeleteFont(..) |
         ApiMsg::AddImage(..) |
+        ApiMsg::AddYUVImage(..) |
         ApiMsg::GenerateFrame(..) |
         ApiMsg::UpdateImage(..) |
+        ApiMsg::UpdateYUVImage(..) |
         ApiMsg::DeleteImage(..) |
         ApiMsg::SetDisplayList(..) |
         ApiMsg::SetRootPipeline(..) |

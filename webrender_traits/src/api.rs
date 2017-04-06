@@ -14,8 +14,7 @@ use {GlyphDimensions, GlyphKey, ImageData, ImageDescriptor, ImageKey, LayoutPoin
 use {LayoutTransform, NativeFontHandle, ScrollLayerId, WorldPoint};
 #[cfg(feature = "webgl")]
 use {WebGLCommand, WebGLContextId};
-
-pub type TileSize = u16;
+use image::TileSize;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub enum ApiMsg {
@@ -26,8 +25,18 @@ pub enum ApiMsg {
     GetGlyphDimensions(Vec<GlyphKey>, MsgSender<Vec<Option<GlyphDimensions>>>),
     /// Adds an image from the resource cache.
     AddImage(ImageKey, ImageDescriptor, ImageData, Option<TileSize>),
+    /// Adds an yuv planar image from the resource cache.
+    AddYUVImage(ImageKey,
+                ImageDescriptor, ImageData,     // y
+                ImageDescriptor, ImageData,     // u
+                ImageDescriptor, ImageData),    // v
     /// Updates the the resource cache with the new image data.
     UpdateImage(ImageKey, ImageDescriptor, ImageData, Option<DeviceUintRect>),
+    /// Updates the the yuv resource cache with the new image data.
+    UpdateYUVImage(ImageKey,
+                   ImageDescriptor, ImageData,  // y
+                   ImageDescriptor, ImageData,  // u
+                   ImageDescriptor, ImageData), // v
     /// Drops an image from the resource cache.
     DeleteImage(ImageKey),
     CloneApi(MsgSender<IdNamespace>),
@@ -73,7 +82,9 @@ impl fmt::Debug for ApiMsg {
             &ApiMsg::DeleteFont(..) => { write!(f, "ApiMsg::DeleteFont") }
             &ApiMsg::GetGlyphDimensions(..) => { write!(f, "ApiMsg::GetGlyphDimensions") }
             &ApiMsg::AddImage(..) => { write!(f, "ApiMsg::AddImage") }
+            &ApiMsg::AddYUVImage(..) => { write!(f, "ApiMsg::AddYUVImage") }
             &ApiMsg::UpdateImage(..) => { write!(f, "ApiMsg::UpdateImage") }
+            &ApiMsg::UpdateYUVImage(..) => { write!(f, "ApiMsg::UpdateYUVImage") }
             &ApiMsg::DeleteImage(..) => { write!(f, "ApiMsg::DeleteImage") }
             &ApiMsg::CloneApi(..) => { write!(f, "ApiMsg::CloneApi") }
             &ApiMsg::SetDisplayList(..) => { write!(f, "ApiMsg::SetDisplayList") }
